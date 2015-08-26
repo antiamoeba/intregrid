@@ -1,0 +1,86 @@
+<html>
+<head>
+	<title>Intregrid</title>
+	<script src="interact.js"></script>
+	<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+	<script src="notes.js"></script>
+	<script src="jquery.mousewheel.min.js"></script>
+	<script src="quill.min.js"></script>
+	<script src="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.concat.min.js"></script>
+	<script src="/ace/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+	<link rel="stylesheet" type="text/css" href="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.min.css">
+	<link rel="stylesheet" type="text/css" href="quill.snow.css">
+	<link rel="stylesheet" type="text/css" href="notes.css">
+	<script>
+		$(function() {
+			$(".content").mousewheel();
+			$(".content").mCustomScrollbar();
+			$(".scroller").mousewheel();
+			$(".scroller").mCustomScrollbar({
+				axis:"x",
+				setHeight: 'auto',
+                setWidth: "auto",
+                advanced:{autoExpandHorizontalScroll:true}
+			});
+		});
+	</script>
+</head>
+<body>
+	<div class="header">
+		<button id="add" type="div"><img src="plus.png" width="20" height="20" /></button>
+	</div>
+	<div class="wrapper">
+		{{#notes}}
+		<div class= "note" style="z-index: {{zIndex}}" id="{{id}}" posx="{{x}}" posy="{{y}}" w="{{width}}" h="{{height}}" note="{{type}}">
+			<div class="topwrapper">
+				<div class = "title">{{title}}<button class="close" style="float:right"><img src="close.png" width="5" height="5"/></button></div>
+				<div class = "content">{{{content}}}</div>
+			</div>
+		</div>
+		{{/notes}}
+	</div>
+	<div id="dialog">
+		<div class="create">
+			<div class="topwrapper">
+				<div class = "createtitle">Create new Note</div>
+				<div class="createcontent">
+					<div class="scroller">
+						<div class="item highlight" type="user">
+							<div class="center">
+								Plain Text
+							</div>
+						</div>
+						<div class="item" type="markdown">
+							<div class="center">
+								Markdown
+							</div>
+						</div>
+						<div class="item" type="html">
+							<div class="center">
+								HTML
+							</div>
+						</div>
+						<div class="item" type="gmail">
+							<div class="center">
+								Gmail
+							</div>
+						</div>
+						<div class="item" type="reddit">
+							<div class="center">
+								Reddit
+							</div>
+						</div>
+						<div class="item" type="code">
+							<div class="center">
+								Code
+							</div>
+						</div>
+					</div>
+					<button class="sibling" type="user">Add note</button>
+					<input class="sibling" type="text" style="float: right" placeholder="title" />
+				</div>
+			</div>
+		</div>
+	</div>
+</body>
+</html>

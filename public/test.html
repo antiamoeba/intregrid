@@ -1,0 +1,38 @@
+<html>
+<head>
+	<script src="interact.js"></script>
+	<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+	<script src="notes.js"></script>
+	<script src="jquery.mousewheel.min.js"></script>
+	<script src="quill.min.js"></script>
+	<script src="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.concat.min.js"></script>
+	<script src="/ace/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+	<link rel="stylesheet" type="text/css" href="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.min.css">
+	<link rel="stylesheet" type="text/css" href="quill.snow.css">
+	<link rel="stylesheet" type="text/css" href="notes.css">
+	<script>
+		$(function() {
+			$(".content").mousewheel();
+			$(".content").mCustomScrollbar();
+			$(".scroller").mousewheel();
+			$(".scroller").mCustomScrollbar({
+				axis:"x",
+				setHeight: 'auto',
+                setWidth: "auto",
+                advanced:{autoExpandHorizontalScroll:true}
+			});
+		});
+	</script>
+</head>
+<body>
+
+
+
+<div class="note" style="z-index: 58; top: 13.125%; left: 13.0857%; width: 31.541%; height: 72.7708%;" id="55d51773e1f9b6381b7c6ad2" posx="13.0857" posy="13.125" w="31.541" h="72.7708" note="user">
+			<div class="topwrapper">
+				<div class="title"><button class="close" style="float:right"><img src="close.png" height="5" width="5"></button></div>
+				<div class="content"><div class="editorwrapper"><div class="toolbar" id="toolbar55d51773e1f9b6381b7c6ad2"><button class="ql-bold">Bold</button><button class="ql-italic">Italic</button></div><div id="55d51773e1f9b6381b7c6ad2editor" class="editor ql-container ql-snow"><div id="ql-editor-1" class="ql-editor" contenteditable="true"><div>asdfcsdfsf</div><div><br></div><div>sdfsdfsdfsdfsd</div><div><br></div><div>wtfxcv</div><div><br></div><div>sdfsdfsdfsdfsdf</div><div><br></div><div>welkfsldkfjsdf</div></div><div class="ql-paste-manager" contenteditable="true"></div></div></div></div>
+			</div>
+		</div>
+</body>
+</html>
