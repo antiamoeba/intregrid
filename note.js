@@ -40,6 +40,7 @@ exports.Note = function(title, content, type, subType) {
 	this.zIndex = 0;
 	this.subType = subType;
 	this.stored = false;
+	this.users = [];
 };
 var google = require('googleapis');
 var gmail = google.gmail('v1');
@@ -53,9 +54,6 @@ exports.TextNote = function(title, content) {
 };
 exports.MarkdownNote = function(title) {
 	exports.Note.call(this, title, "", "markdown", "");
-};
-exports.HtmlNote = function(title) {
-	exports.Note.call(this, title, "", "html", "");
 };
 exports.UserNote = function(title) {
 	exports.Note.call(this, title, "", "user", "");
@@ -74,9 +72,6 @@ exports.NoteBuilder = function(type, title, content) {
 	else if(type==="user") {
 		return new exports.UserNote(title);
 	}
-	else if(type==="html") {
-		return new exports.HtmlNote(title);
-	}
 	else if(type==="markdown") {
 		return new exports.MarkdownNote(title);
 	}
@@ -89,20 +84,6 @@ exports.NoteBuilder = function(type, title, content) {
 };
 exports.handleContent = function(note, user, callback) {
 	if(note.typeNote==="text") {
-		var output = note.content;
-		output = sanitizeHtml(output, {
-			allowedTags: [ 'b', 'i', 'em', 'strong', 'a', 'img', 'div', 'ol', 'li', 'span', 'u'],
-			allowedAttributes: {
-				'a': [ 'href' ],
-				'img': [ 'src' ],
-				'div': ['style'],
-				'span': ['style'],
-				'li': ['style']
-			}
-		});
-		callback(null, output);
-	}
-	else if(note.typeNote==="html") {
 		var output = note.content;
 		output = sanitizeHtml(output, {
 			allowedTags: [ 'b', 'i', 'em', 'strong', 'a', 'img', 'div', 'ol', 'li', 'span', 'u'],

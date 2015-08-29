@@ -1,5 +1,5 @@
 $(function() {
-
+    var workspace = $("#workspace").attr("workspace");
     var requests = 0;
     interact('.title').draggable({
         // enable inertial throwing
@@ -25,7 +25,7 @@ $(function() {
                 zIndex: parseInt(note.css("z-index"))
             }
             requests++;
-            $.post("updateGeology", options, function(data) {
+            $.post("/updateGeology/"+workspace, options, function(data) {
                 requests--;
             });
         }
@@ -43,7 +43,7 @@ $(function() {
                 zIndex: parseInt(note.css("z-index"))
             }
             requests++;
-            $.post("updateGeology", options, function(data) {
+            $.post("/updateGeology/"+workspace, options, function(data) {
                 requests--;
             });
         }
@@ -114,6 +114,7 @@ $(function() {
         };
     });
     var topz = 0;
+    var quills = [];
     $(".note").each(function(index) {
         var zIndex = parseInt($(this).css("z-index"));
         if(zIndex>topz) {
@@ -122,35 +123,58 @@ $(function() {
         var options = {
             id: $(this).attr("id")
         }
-        requests++;
         var note = $(this);
-        $.post("getNote", options, function(data) {
-            note.find(".mCSB_container").html(data);
-            if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="code") {
-                var textarea = $("#"+note.attr("id")+"editor");
-                var editor = ace.edit(note.attr("id")+"editor");
-                editor.setTheme('ace/theme/solarized_dark');
-                var input = textarea.prev('input[type=hidden]');
-                editor.getSession().setMode('ace/mode/'+input.attr("lang"));
-                editor.getSession().on('change', function() {input.val(editor.getValue());});
-            }
-            if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
-                console.log(data);
-                var configs = {
-                    theme: 'snow'
-                };
-                var editor = $("#"+note.attr("id")+"editor");
-                var quill = new Quill(editor[0], configs);
-                var toolbar = $('#toolbar'+note.attr("id"));
-                quill.addModule('toolbar', {container: toolbar[0]});
-                quill.addModule('link-tooltip', true);
-                quill.addModule('image-tooltip', true);
-            }
-            requests--;
-        });
+        if(!note.hasClass("storage")) {
+            requests++;
+            $.post("/getNote", options, function(data) {
+                note.find(".mCSB_container").html(data);
+                if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="code") {
+                    var textarea = $("#"+note.attr("id")+"editor");
+                    var editor = ace.edit(note.attr("id")+"editor");
+                    editor.setTheme('ace/theme/solarized_dark');
+                    var input = textarea.prev('input[type=hidden]');
+                    editor.getSession().setMode('ace/mode/'+input.attr("lang"));
+                    editor.getSession().on('change', function() {input.val(editor.getValue());});
+                }
+                if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
+                    console.log(data);
+                    var configs = {
+                        theme: 'snow'
+                    };
+                    var editor = $("#"+note.attr("id")+"editor");
+                    var contents = "";
+                    if(editor.html().trim()=="") {
+                        contents = [];
+                    }
+                    else {
+                        contents = JSON.parse(editor.html());
+                    }
+                    var quill = new Quill(editor[0], configs);
+                    quills[note.attr("id")] = quill;
+                    quill.setContents(contents);
+                    var toolbar = $('#toolbar'+note.attr("id"));
+                    quill.addModule('toolbar', {container: toolbar[0]});
+                    quill.addModule('link-tooltip', true);
+                    quill.addModule('image-tooltip', true);
+                }
+                requests--;
+            });
+        }
     });
     $(".note").mousedown(function () {
         $(this).css("z-index", ++topz);
+    });
+    var email = $("#email");
+    $("#props").click(function() {
+        if(email.val()) {
+            var options = {
+                email: email.val()
+            };
+            $.post("/shareWorkspace/"+workspace, options, function(data) {
+                requests--;
+                email.val("");
+            });
+        }
     });
       // this is used later in the resizing demo
     window.dragMoveListener = dragMoveListener;
@@ -165,6 +189,7 @@ $(function() {
             requests++;
         }
         saved[id] = false;
+        console.log("here!");
         if(note.find(".ql-editor").html()) {
             timers[id] = setTimeout(updateUserText, interval, note);
         }
@@ -200,47 +225,9 @@ $(function() {
         }
         requests++;
         button.html("Adding...");
-        $.post("createNote", options, function(data) {
+        $.post("/createNote/"+workspace, options, function(data) {
             requests--;
-            var note = $(data);
-            $(".wrapper").append(note);
-            note.find(".content").mCustomScrollbar();
-            if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="code") {
-                var textarea = $("#"+note.attr("id")+"editor");
-                console.log(note.attr("id"));
-                var editor = ace.edit(note.attr("id")+"editor");
-                editor.setTheme('ace/theme/solarized_dark');
-                editor.getSession().setMode('ace/mode/'+textarea.attr("lang"));
-                var input = textarea.prev('input[type=hidden]');
-                editor.getSession().on('change', function() {input.val(editor.getValue());});
-            }
-            if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
-                var configs = {
-                    theme: 'snow'
-                };
-                var editor = $("#"+note.attr("id")+"editor");
-                var quill = new Quill(editor[0], configs);
-                var toolbar = $('#toolbar'+note.attr("id"));
-                quill.addModule('toolbar', {container: toolbar[0], 'link-tooltip': true,'image-tooltip': true});
-            }
-            note.find(".close").click(function() {
-                var options = {
-                    id: note.attr("id")
-                }
-                requests++;
-                $.post("deleteNote", options, function(data) {
-                    requests--;
-                    note.remove();
-                });
-            })
-            var x = note.attr("posx");
-            var y = note.attr("posy");
-            note.css("top", y+"%");
-            note.css("left", x+"%");
-            var width = note.attr("w");
-            var height = note.attr("h");
-            note.css("width", width+"%");
-            note.css("height", height+"%");
+            showNote(data);
             button.html("Add note");
             dialog.fadeOut();
         });
@@ -258,18 +245,20 @@ $(function() {
             id: note.attr("id")
         }
         requests++;
-        $.post("deleteNote", options, function(data) {
+        $.post("/removeNote/"+workspace, options, function(data) {
             requests--;
             note.remove();
         });
     });
     function updateUserText(note) {
         saved[note.attr('id')] = true;
+        var content = JSON.stringify(quills[note.attr('id')].getContents());
+        console.log(content);
         var options = {
             id:note.attr('id'),
-            text: note.find(".ql-editor").html(),
+            text: content,
         }
-        $.post("updateUserText", options, function(data) {
+        $.post("/updateUserText/"+workspace, options, function(data) {
             requests--;
         });
     }
@@ -279,9 +268,61 @@ $(function() {
             id:note.attr('id'),
             text: note.find("input[name='"+note.attr('id')+"editor']").val(),
         }
-        $.post("updateUserText", options, function(data) {
+        $.post("/updateUserText/"+workspace, options, function(data) {
             requests--;
         });
+    }
+    function showNote(html) {
+        var note = $(html);
+        $(".wrapper").append(note);
+        note.find(".content").mCustomScrollbar();
+        if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="code") {
+            var textarea = $("#"+note.attr("id")+"editor");
+            console.log(note.attr("id"));
+            var editor = ace.edit(note.attr("id")+"editor");
+            editor.setTheme('ace/theme/solarized_dark');
+            editor.getSession().setMode('ace/mode/'+textarea.attr("lang"));
+            var input = textarea.prev('input[type=hidden]');
+            editor.getSession().on('change', function() {input.val(editor.getValue());});
+        }
+        if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
+            var configs = {
+                theme: 'snow'
+            };
+            var editor = $("#"+note.attr("id")+"editor");
+            var contents = "";
+            if(editor.html().trim()=="") {
+                contents = [];
+            }
+            else {
+                contents = JSON.parse(editor.html());
+            }
+            var quill = new Quill(editor[0], configs);
+            quills[note.attr("id")] = quill;
+            quill.setContents(contents);
+            var toolbar = $('#toolbar'+note.attr("id"));
+            quill.addModule('toolbar', {container: toolbar[0]});
+            quill.addModule('link-tooltip', true);
+            quill.addModule('image-tooltip', true);
+        }
+        note.find(".close").click(function() {
+            var options = {
+                id: note.attr("id")
+            }
+            requests++;
+            $.post("/removeNote/"+workspace, options, function(data) {
+                requests--;
+                note.remove();
+            });
+        })
+        var x = note.attr("posx");
+        var y = note.attr("posy");
+        note.css("top", y+"%");
+        note.css("left", x+"%");
+        var width = note.attr("w");
+        var height = note.attr("h");
+        note.css("width", width+"%");
+        note.css("height", height+"%");
     }
     $(window).on('beforeunload', function(e) {
         if(requests>0) {

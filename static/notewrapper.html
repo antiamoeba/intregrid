@@ -1,0 +1,109 @@
+<html>
+<head>
+	<title>
+		{{note.title}}
+	</title>
+	<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+	<script src="/jquery.mousewheel.min.js"></script>
+	<script src="/quill.min.js"></script>
+	<script src="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.concat.min.js"></script>
+	<script src="/ace/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+	<link rel="stylesheet" type="text/css" href="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.min.css">
+	<link rel="stylesheet" type="text/css" href="/quill.snow.css">
+	<link rel="stylesheet" type="text/css" href="/notes.css">
+	<script>
+		$(function() {
+			$(".content").mousewheel();
+			$(".content").mCustomScrollbar();
+			var note = $(".note");
+			note.width("93%");
+			note.height("93%");
+            if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="code") {
+                var textarea = $("#"+note.attr("id")+"editor");
+                var editor = ace.edit(note.attr("id")+"editor");
+                editor.setTheme('ace/theme/solarized_dark');
+                var input = textarea.prev('input[type=hidden]');
+                editor.getSession().setMode('ace/mode/'+input.attr("lang"));
+                editor.getSession().on('change', function() {input.val(editor.getValue());});
+            }
+            if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
+                console.log(data);
+                var configs = {
+                    theme: 'snow'
+                };
+                var editor = $("#"+note.attr("id")+"editor");
+                var contents = JSON.parse(editor.html());
+                if(editor.html().trim()=="") {
+                    contents = [];
+                }
+                var quill = new Quill(editor[0], configs);
+                quills[note.attr("id")] = quill;
+                quill.setContents(contents);
+                var toolbar = $('#toolbar'+note.attr("id"));
+                quill.addModule('toolbar', {container: toolbar[0]});
+                quill.addModule('link-tooltip', true);
+                quill.addModule('image-tooltip', true);
+            }
+            var timers = [];
+		    var saved = [];
+		    var interval = 3000;
+		    var requests = 0;
+		    $("[note='user']").keyup(function() {
+		        var note = $(this);
+		        var id = note.attr("id");
+		        clearTimeout(timers[id]);
+		        if(saved[id]!=false) {
+		            requests++;
+		        }
+		        saved[id] = false;
+		        console.log("here!");
+		        if(note.find(".ql-editor").html()) {
+		            timers[id] = setTimeout(updateUserText, interval, note);
+		        }
+		    });
+		    $("[note='code']").keyup(function() {
+		        var note = $(this);
+		        var id = note.attr("id");
+		        clearTimeout(timers[id]);
+		        if(saved[id]!=false) {
+		            requests++;
+		        }
+		        saved[id] = false;
+		        if(note.find("input[type=hidden]").val()) {
+		            timers[id] = setTimeout(updateUserCode, interval, note);
+		        }
+		    });
+		    function updateUserText(note) {
+		        saved[note.attr('id')] = true;
+		        var content = JSON.stringify(quills[note.attr('id')].getContents());
+		        console.log(content);
+		        var options = {
+		            id:note.attr('id'),
+		            text: content,
+		        }
+		        $.post("/updateUserText/"+workspace, options, function(data) {
+		            requests--;
+		        });
+		    }
+		    function updateUserCode(note) {
+		        saved[note.attr('id')] = true;
+		        var options = {
+		            id:note.attr('id'),
+		            text: note.find("input[name='"+note.attr('id')+"editor']").val(),
+		        }
+		        $.post("/updateUserText/"+workspace, options, function(data) {
+		            requests--;
+		        });
+		    }
+		    $(window).on('beforeunload', function(e) {
+		        if(requests>0) {
+		            e.returnValue = "Are you sure you want to exit? Your data is still being saved.";
+		            return e.returnValue;
+		        }
+		    });
+		});
+	</script>
+<body>
+	{{{note}}}
+</body>
+</html>
