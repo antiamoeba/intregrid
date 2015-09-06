@@ -3,15 +3,17 @@
 	<title>Intregrid</title>
 	<script src="/interact.js"></script>
 	<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+	<script src="/delta.js"></script>
 	<script src="/notes.js"></script>
 	<script src="/jquery.mousewheel.min.js"></script>
 	<script src="/quill.min.js"></script>
+	<script src='/channel/bcsocket.js'></script>
+	<script src="/antot-client.js"></script>
 	<script src="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.concat.min.js"></script>
 	<script src="/ace/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
 	<link rel="stylesheet" type="text/css" href="http://malihu.github.io/custom-scrollbar/jquery.mCustomScrollbar.min.css">
 	<link rel="stylesheet" type="text/css" href="/quill.snow.css">
 	<link rel="stylesheet" type="text/css" href="/notes.css">
-	<script src="https://cdn.socket.io/socket.io-1.3.5.js"></script>
 	<script>
 		$(function() {
 			$(".content").mousewheel();
@@ -23,7 +25,7 @@
                 setWidth: "auto",
                 advanced:{autoExpandHorizontalScroll:true}
 			});
-			var socket = io();
+			var workspaceId = $("#workspace").attr("workspace");
 		});
 	</script>
 </head>
@@ -31,8 +33,8 @@
 	<div workspace="{{workspaceId}}" id="workspace"></div>
 	<div class="header">
 		<button id="add" type="div"><img src="/plus.png" width="20" height="20" /></button>
-		<button id="props" style="float:right;height:100%">Share</button>
-		<input id="email" type="text" style="float:right;height:100%;" placeholder="email" />
+		<button id="props" style="float:right;">Share</button>
+		<input id="email" type="text" style="float:right;" placeholder="email" />
 	</div>
 	<div class="wrapper">
 		{{#notes}}

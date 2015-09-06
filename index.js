@@ -1,17 +1,26 @@
+//importing shit!
 var express = require('express');
 var app = express();
 var bodyParser = require('body-parser');
 var cookieParser = require('cookie-parser');
 var session = require('express-session');
 var fs = require('fs');
+//Database - search and filter
 var mongoose = require('mongoose');
+//Session
+var MongoStore = require('connect-mongo')(session);
+//Templating
 var Handlebars = require('handlebars');
+//Credentials
 var creds = require('./credentials');
+//Note classes and stuff
 var Note = require('./note');
+
 mongoose.connect('mongodb://localhost/integrid');
 var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function (callback) {
+	//when i get connection to database
 	console.log("opened!");
 	var userSchema = mongoose.Schema({
 		google: {
@@ -54,19 +63,107 @@ db.once('open', function (callback) {
 	User = mongoose.model('User', userSchema);
 	NoteModel = mongoose.model('NoteModel', noteSchema);
 });
+//Authentication
 var passport = require('passport');
 var GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
+//Creating server
 var http = require('http').Server(app);
-var io = require('socket.io')(http);
+//Websocket
+var browserChannel = require("browserchannel").server;
 var User;
 var Workspace;
+var antot = require('./antot');
 var NoteModel;
+//Post request data
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+//Cookies
 app.use(cookieParser());
-app.use(session({secret: "dogfish", resave:false}));
+var ms = new MongoStore({ mongooseConnection: mongoose.connection });
+app.use(session({secret: "dogfish", resave:false, store: ms}));
 app.use(passport.initialize());
 app.use(passport.session());
+var ss = [];
+app.use(browserChannel(function(client,req) {
+	var user = req.user;
+	client.on('message', function(data) {
+		var noteId = data.noteId;
+		if(noteId) {
+			NoteModel.findById(noteId, function(err, note) {
+				if(err) {
+					console.log(err);
+					client.send({err:"Error!"});
+					return;
+				}
+				if(!note) {
+					client.send({err:"Note not found!"});
+					return;
+				}
+				if(note.users.indexOf(user.google.userId)<0) {
+					client.send({err:"Not Authorized!"});
+					return;
+				}
+				if(note.typeNote!="user"&&note.typeNote!="code") {
+					client.send({err:"Not Authorized!"});
+					return;
+				}
+				if(!ss[noteId]) {
+					ss[noteId] = new NoteServer(noteId, note.content);
+				}
+				ss[noteId].connection(client);
+			});
+		}
+	});
+}));
+Client = function(client, server) {
+	this.client = client;
+	this.server = server;
+	this.client.on("message", function(data) {
+		this.server.onMessage(this, data);
+		clearTimeout(this.server.timer);
+		this.server.timer = setTimeout(this.server.save,5000);
+	}.bind(this));
+	this.client.on("close", function() {
+		this.server.onDisconnect(this);
+	}.bind(this));
+	this.sendMessage = function(data) {
+		client.send(JSON.stringify(data));
+	}
+}
+function NoteServer(noteId, content) {
+	antot.Server.call(this, content);
+	this.noteId = noteId;
+	this.timer = null;
+	this.save = function() {
+		NoteModel.findById(this.noteId, function(err, note) {
+			if(err) {
+				console.log(err);
+				return;
+			}
+			if(!note) {
+				console.log("Note not found!");
+				return;
+			}
+			if(note.typeNote!="user"&&note.typeNote!="code") {
+				console.log("Not Authorized!");
+				return;
+			}
+			note.set("content", JSON.stringify(this.getState()));
+			note.save(function(err) {
+				if(err) {
+					console.log(err);
+				}
+				else {
+					console.log("Saved "+note.title);
+				}
+			});
+		}.bind(this));
+	}.bind(this);
+	this.connection = function(client) {
+		client = new Client(client, this)
+		this.onConnection(client);
+	}
+}
 var template;
 var noteTemplate;
 var noteWrapper;
@@ -244,6 +341,7 @@ function getHTMLNote(note, user, callback) {
 	obj.height = note.height;
 	obj.id = note.id;
 	obj.type = note.typeNote;
+	obj.subType = note.subType;
 	obj.zIndex = note.zIndex;
 	Note.handleContent(note, user, function(err, content) {
 		if(err) {
@@ -570,7 +668,7 @@ app.post('/updateUserText/:id', ensureAuthenticated, function(req, res) {
 				res.send("Not Authorized!");
 				return;
 			}
-			if(note.typeNote=="user"||note.typeNote=="markdown"||note.typeNote=="html"||note.typeNote=="code") {
+			if(note.typeNote=="markdown"||note.typeNote=="html"||note.typeNote=="code") {
 				note.set("content", content);
 				note.save(function(err) {
 					if(err) {
@@ -666,6 +764,7 @@ app.post('/shareWorkspace/:id', ensureAuthenticated, function(req, res) {
 			}
 			workspace.users.push(newUserId);
 			workspace.markModified("users");
+			console.log("share pls");
 			workspace.save(function(err) {
 				if(err) {
 					console.log(err);
@@ -872,9 +971,6 @@ app.post('/createNote/:id', ensureAuthenticated, function(req, res) {
 		}
 	});
 });
-io.on('connection', function(socket){
-  console.log('a user connected');
-});
 app.get('/login', function(req, res){
 	res.redirect('/auth/google');
 });
@@ -884,6 +980,9 @@ app.get('/logout', function(req, res){
 });
 app.get('/update', function(req, res){
 	updateTemplates();
+});
+app.get('/user', function(req, res){
+	res.send(req.user);
 });
 app.use(express.static(__dirname+'/public'));
 http.listen(3000, function(){

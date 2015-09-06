@@ -1,0 +1,1 @@
+window.Delta = require('rich-text').Delta;

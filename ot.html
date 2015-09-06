@@ -1,0 +1,57 @@
+<html>
+<head>
+	<title>
+		Hello
+	</title>
+	<script src="antot-client.js"></script>
+</head>
+<body>
+	<!-- Create the toolbar container -->
+<div id="toolbar">
+  <button class="ql-bold">Bold</button>
+  <button class="ql-italic">Italic</button>
+</div>
+
+<!-- Create the editor container -->
+<div id="editor">
+  <div>Hello World!</div>
+  <div>Some initial <b>bold</b> text</div>
+  <div><br></div>
+</div>
+
+<!-- Include the Quill library -->
+<script src="http://cdn.quilljs.com/0.20.0/quill.js"></script>
+<script src='/channel/bcsocket.js'></script>
+
+<!-- Initialize Quill editor -->
+<script>
+  var quill = new Quill("#editor");
+  quill.addModule('toolbar', { container: '#toolbar' });
+  var ce = ConnectionEditor(quill);
+  function ConnectionEditor(editor) {
+  	this.editor = editor;
+  	Editor.call(this);
+  	socket = new BCSocket('/channel');
+  	receiveMessage = function(onMess) {
+  		return function(message) {
+  			onMess(message);
+  		}
+  	}
+	socket.onmessage = receiveMessage(this.onMessage);
+  	this.sendMessage = function(data) {
+  		socket.send(data);
+  	}
+  	this.updateContents = function(data) {
+  		this.editor.updateContents(data);
+  	}
+  	this.setContents = function(data) {
+  		this.editor.setContents(data);
+  	}
+  	editor.on('text-change', function(delta, source) {
+  		if(source=="user")
+	  		this.sendUpdate(delta);
+	  }.bind(this));
+  }
+</script>
+</body>
+</html>

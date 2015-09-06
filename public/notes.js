@@ -1,4 +1,10 @@
 $(function() {
+    String.prototype.insert = function (index, string) {
+      if (index > 0)
+        return this.substring(0, index) + string + this.substring(index, this.length);
+      else
+        return string + this;
+    };
     var workspace = $("#workspace").attr("workspace");
     var requests = 0;
     interact('.title').draggable({
@@ -124,6 +130,7 @@ $(function() {
             id: $(this).attr("id")
         }
         var note = $(this);
+        applyListeners(note);
         if(!note.hasClass("storage")) {
             requests++;
             $.post("/getNote", options, function(data) {
@@ -134,36 +141,174 @@ $(function() {
                     editor.setTheme('ace/theme/solarized_dark');
                     var input = textarea.prev('input[type=hidden]');
                     editor.getSession().setMode('ace/mode/'+input.attr("lang"));
-                    editor.getSession().on('change', function() {input.val(editor.getValue());});
+                    var ac = new AceConnection(editor, note.attr("id"));
                 }
                 if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
-                    console.log(data);
                     var configs = {
                         theme: 'snow'
                     };
                     var editor = $("#"+note.attr("id")+"editor");
-                    var contents = "";
-                    if(editor.html().trim()=="") {
-                        contents = [];
-                    }
-                    else {
-                        contents = JSON.parse(editor.html());
-                    }
                     var quill = new Quill(editor[0], configs);
                     quills[note.attr("id")] = quill;
-                    quill.setContents(contents);
                     var toolbar = $('#toolbar'+note.attr("id"));
                     quill.addModule('toolbar', {container: toolbar[0]});
                     quill.addModule('link-tooltip', true);
                     quill.addModule('image-tooltip', true);
+                    var ce = new ConnectionEditor(quill, note.attr("id"));
                 }
                 requests--;
             });
         }
     });
-    $(".note").mousedown(function () {
-        $(this).css("z-index", ++topz);
-    });
+    function AceConnection(editor, noteId) {
+        this.editor = editor;
+        editor.$blockScrolling = Infinity;
+        Editor.call(this);
+        socket = new BCSocket('/channel');
+        socket.send({noteId: noteId});
+        this.lock = false;
+        receiveMessage = function(onMess) {
+            return function(message) {
+                onMess(message);
+            }
+        }
+        socket.onmessage = receiveMessage(this.onMessage);
+        this.sendMessage = function(data) {
+            socket.send(data);
+        }
+        this.getAceIndex = function(index) {
+            var line = "";
+            var session = this.editor.getSession();
+            var length = session.getLength();
+            var counter = 0;
+            var newLine = session.getDocument().getNewLineCharacter();
+            for(var i=0;i<length;i++) {
+                line = session.getLine(i);
+                counter += line.length;
+                if(counter>=index) {
+                    return {row: i, column: line.length-(counter-index)};
+                }
+                else {
+                    counter += newLine.length;
+                }
+            }
+            return null;
+        }
+        this.getAntIndex = function(change) {
+            var row = change.row;
+            var column = change.column;
+            var index = 0;
+            var session = this.editor.getSession();
+            var newLine = "\n";
+            for(var i=0;i<row;i++) {
+                index += session.getLine(i).length;
+                if(i<row) {
+                    index += newLine.length;
+                }
+            }
+            index += column;
+            return index;
+        }
+        this.convertAceDelta = function(change) {
+            var start = change.start;
+            var antindex = this.getAntIndex(start);
+            var delta = new Delta().retain(antindex);
+            var action = change.action;
+            if(action=="insert") {
+                var lines = change.lines;
+                var insert = "";
+                for(var i=0;i<lines.length;i++) {
+                    insert+=lines[i];
+                    if(i<lines.length-1) {
+                        insert += "\n";
+                    }
+                }
+                delta = delta.insert(insert);
+            }
+            if(action=="remove") {
+                var lines = change.lines;
+                var remove = "";
+                for(var i=0;i<lines.length;i++) {
+                    remove+=lines[i];
+                    if(i<lines.length-1) {
+                        remove += "\n";
+                    }
+                }
+                delta = delta.delete(remove.length);
+            }
+            return delta;
+        }
+        this.updateContents = function(data) {
+            this.lock = true;
+            var ops = data.ops;
+            var cursor = 0;
+            console.log(JSON.stringify(data));
+            for(var i=0;i<ops.length;i++) {
+                var op = ops[i];
+                for(property in op) {
+                    if(property=="insert") {
+                        this.editor.getSession().insert(this.getAceIndex(cursor), op[property]);
+                        cursor+=op[property].length;
+                    }
+                    if(property=="retain") {
+                        var length = this.editor.getValue().length;
+                        if(cursor+op[property]>length) {
+                            var limit = cursor + op[property]-length;
+                            for(var j=0;j<limit;j++) {
+                                this.editor.getSession().insert(this.getAceIndex(cursor), " ");
+                                cursor+=1;
+                            }
+                        }
+                        else {
+                            cursor+=op[property];
+                        }
+                    }
+                    if(property=="delete") {
+                        this.editor.getSession().remove({start:this.getAceIndex(cursor), end:this.getAceIndex(cursor+op[property])});
+                    }
+                }
+            }
+            this.lock = false;
+        }
+        this.setContents = function(data) {
+            console.log(JSON.stringify(data));
+            this.lock = true;
+            this.editor.setValue("");
+            this.updateContents(data);
+            this.lock = false;
+        }
+        editor.getSession().on('change', function(e) {
+            if(this.lock) return;
+            console.log(JSON.stringify(e));
+            console.log(JSON.stringify(this.convertAceDelta(e)));
+            this.sendUpdate(this.convertAceDelta(e));
+        }.bind(this));
+    }
+    function ConnectionEditor(editor, noteId) {
+        this.editor = editor;
+        Editor.call(this);
+        socket = new BCSocket('/channel');
+        socket.send({noteId: noteId});
+        receiveMessage = function(onMess) {
+            return function(message) {
+                onMess(message);
+            }
+        }
+        socket.onmessage = receiveMessage(this.onMessage);
+        this.sendMessage = function(data) {
+            socket.send(data);
+        }
+        this.updateContents = function(data) {
+            this.editor.updateContents(data);
+        }
+        this.setContents = function(data) {
+            this.editor.setContents(data);
+        }
+        editor.on('text-change', function(delta, source) {
+            if(source=="user")
+                this.sendUpdate(delta);
+        }.bind(this));
+    }
     var email = $("#email");
     $("#props").click(function() {
         if(email.val()) {
@@ -181,31 +326,6 @@ $(function() {
     var timers = [];
     var saved = [];
     var interval = 3000;
-    $("[note='user']").keyup(function() {
-        var note = $(this);
-        var id = note.attr("id");
-        clearTimeout(timers[id]);
-        if(saved[id]!=false) {
-            requests++;
-        }
-        saved[id] = false;
-        console.log("here!");
-        if(note.find(".ql-editor").html()) {
-            timers[id] = setTimeout(updateUserText, interval, note);
-        }
-    });
-    $("[note='code']").keyup(function() {
-        var note = $(this);
-        var id = note.attr("id");
-        clearTimeout(timers[id]);
-        if(saved[id]!=false) {
-            requests++;
-        }
-        saved[id] = false;
-        if(note.find("input[type=hidden]").val()) {
-            timers[id] = setTimeout(updateUserCode, interval, note);
-        }
-    });
     $(".scroller .item").click(function() {
         var item = $(this);
         item.siblings().removeClass("highlight");
@@ -216,7 +336,6 @@ $(function() {
     $(".createcontent button").click(function() {
         var button = $(this);
         var title = button.siblings("input").val();
-        console.log(title);
         var options = {
             type:button.attr("type"),
             title:title,
@@ -236,75 +355,44 @@ $(function() {
         var scroller = $(this).parent();
         var button = scroller.children("button");
         var input = scroller.children("input");
-        console.log(button.height());
         input.height(button.height());
     });
-    $(".close").click(function() {
-        var note =$(this).closest(".note");
-        var options = {
-            id: note.attr("id")
-        }
-        requests++;
-        $.post("/removeNote/"+workspace, options, function(data) {
-            requests--;
-            note.remove();
-        });
-    });
-    function updateUserText(note) {
-        saved[note.attr('id')] = true;
-        var content = JSON.stringify(quills[note.attr('id')].getContents());
-        console.log(content);
-        var options = {
-            id:note.attr('id'),
-            text: content,
-        }
-        $.post("/updateUserText/"+workspace, options, function(data) {
-            requests--;
-        });
-    }
-    function updateUserCode(note) {
-        saved[note.attr('id')] = true;
-        var options = {
-            id:note.attr('id'),
-            text: note.find("input[name='"+note.attr('id')+"editor']").val(),
-        }
-        $.post("/updateUserText/"+workspace, options, function(data) {
-            requests--;
-        });
-    }
     function showNote(html) {
         var note = $(html);
         $(".wrapper").append(note);
         note.find(".content").mCustomScrollbar();
         if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="code") {
             var textarea = $("#"+note.attr("id")+"editor");
-            console.log(note.attr("id"));
             var editor = ace.edit(note.attr("id")+"editor");
             editor.setTheme('ace/theme/solarized_dark');
-            editor.getSession().setMode('ace/mode/'+textarea.attr("lang"));
             var input = textarea.prev('input[type=hidden]');
-            editor.getSession().on('change', function() {input.val(editor.getValue());});
+            editor.getSession().setMode('ace/mode/'+input.attr("lang"));
+            var ac = new AceConnection(editor, note.attr("id"));
         }
         if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
             var configs = {
                 theme: 'snow'
             };
             var editor = $("#"+note.attr("id")+"editor");
-            var contents = "";
-            if(editor.html().trim()=="") {
-                contents = [];
-            }
-            else {
-                contents = JSON.parse(editor.html());
-            }
             var quill = new Quill(editor[0], configs);
             quills[note.attr("id")] = quill;
-            quill.setContents(contents);
             var toolbar = $('#toolbar'+note.attr("id"));
             quill.addModule('toolbar', {container: toolbar[0]});
             quill.addModule('link-tooltip', true);
             quill.addModule('image-tooltip', true);
+            var ce = new ConnectionEditor(quill, note.attr("id"));
         }
+        applyListeners(note);
+        var x = note.attr("posx");
+        var y = note.attr("posy");
+        note.css("top", y+"%");
+        note.css("left", x+"%");
+        var width = note.attr("w");
+        var height = note.attr("h");
+        note.css("width", width+"%");
+        note.css("height", height+"%");
+    }
+    function applyListeners(note) {
         note.find(".close").click(function() {
             var options = {
                 id: note.attr("id")
@@ -314,15 +402,11 @@ $(function() {
                 requests--;
                 note.remove();
             });
-        })
-        var x = note.attr("posx");
-        var y = note.attr("posy");
-        note.css("top", y+"%");
-        note.css("left", x+"%");
-        var width = note.attr("w");
-        var height = note.attr("h");
-        note.css("width", width+"%");
-        note.css("height", height+"%");
+        });
+        note.mousedown(function () {
+            $(this).css("z-index", ++topz);
+        });
+
     }
     $(window).on('beforeunload', function(e) {
         if(requests>0) {

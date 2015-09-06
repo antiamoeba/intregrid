@@ -107,7 +107,7 @@ exports.handleContent = function(note, user, callback) {
 	}
 	else if(note.typeNote==="user") {
 		var output = note.content;
-		output = userTemplate({output: output, noteId: note.id});
+		output = userTemplate({noteId: note.id});
 		callback(null, output);
 	}
 	else if(note.typeNote==="code") {
