@@ -158,14 +158,25 @@ $(function() {
                 }
                 requests--;
             });
+            var geology = new GeologyEditor(note, note.attr("id"));
         }
+        //Yay
     });
+    function GeologyEditor(note, noteId) {
+        //
+        //
+        // Insert stuff here;
+        //
+        //
+        socket = new BCSocket('/channel');
+        socket.send({noteId: noteId, type: "geology", workspaceId: workspace});
+    }
     function AceConnection(editor, noteId) {
         this.editor = editor;
         editor.$blockScrolling = Infinity;
         Editor.call(this);
         socket = new BCSocket('/channel');
-        socket.send({noteId: noteId});
+        socket.send({noteId: noteId, type: "text"});
         this.lock = false;
         receiveMessage = function(onMess) {
             return function(message) {
@@ -288,7 +299,7 @@ $(function() {
         this.editor = editor;
         Editor.call(this);
         socket = new BCSocket('/channel');
-        socket.send({noteId: noteId});
+        socket.send({noteId: noteId, type: "text"});
         receiveMessage = function(onMess) {
             return function(message) {
                 onMess(message);
@@ -382,6 +393,7 @@ $(function() {
             quill.addModule('image-tooltip', true);
             var ce = new ConnectionEditor(quill, note.attr("id"));
         }
+        var geology = new GeologyEditor(note, note.attr("id"));
         applyListeners(note);
         var x = note.attr("posx");
         var y = note.attr("posy");

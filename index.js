@@ -36,7 +36,12 @@ db.once('open', function (callback) {
 		name: String,
 		notes: [{
 			noteId: String,
-			stored: Boolean
+			stored: Boolean,
+			x: Number,
+			y: Number,
+			width: Number,
+			height: Number,
+			zIndex: Number
 		}],
 		storage: {
 			x: Number,
@@ -49,14 +54,9 @@ db.once('open', function (callback) {
 	});
 	var noteSchema = mongoose.Schema({
 		title: String,
-		x: Number,
-		y: Number,
-		width: Number,
-		height: Number,
 		content: String,
 		typeNote: String,
 		subType: String,
-		zIndex: Number,
 		users: [String]
 	});
 	Workspace = mongoose.model('Workspace', workspaceSchema);
@@ -84,37 +84,99 @@ app.use(session({secret: "dogfish", resave:false, store: ms}));
 app.use(passport.initialize());
 app.use(passport.session());
 var ss = [];
+var ng = [];
 app.use(browserChannel(function(client,req) {
 	var user = req.user;
 	client.on('message', function(data) {
 		var noteId = data.noteId;
 		if(noteId) {
-			NoteModel.findById(noteId, function(err, note) {
-				if(err) {
-					console.log(err);
-					client.send({err:"Error!"});
-					return;
-				}
-				if(!note) {
-					client.send({err:"Note not found!"});
-					return;
-				}
-				if(note.users.indexOf(user.google.userId)<0) {
-					client.send({err:"Not Authorized!"});
-					return;
-				}
-				if(note.typeNote!="user"&&note.typeNote!="code") {
-					client.send({err:"Not Authorized!"});
-					return;
-				}
-				if(!ss[noteId]) {
-					ss[noteId] = new NoteServer(noteId, note.content);
-				}
-				ss[noteId].connection(client);
-			});
+			if(data.type=="text") {
+				NoteModel.findById(noteId, function(err, note) {
+					if(err) {
+						console.log(err);
+						client.send({err:"Error!"});
+						return;
+					}
+					if(!note) {
+						client.send({err:"Note not found!"});
+						return;
+					}
+					if(note.users.indexOf(user.google.userId)<0) {
+						client.send({err:"Not Authorized!"});
+						return;
+					}
+					if(note.typeNote!="user"&&note.typeNote!="code") {
+						client.send({err:"Not Authorized!"});
+						return;
+					}
+					if(!ss[noteId]) {
+						ss[noteId] = new NoteServer(noteId, note.content);
+					}
+					ss[noteId].connection(client);
+				});
+			}
+			if(data.type=="geology") {
+				Workspace.findById(data.workspaceId, function(err, workspace) {
+					if(err) {
+						console.log(err);
+						client.send({err:"Error!"});
+						return;
+					}
+					if(!workspace) {
+						client.send({err:"Note not found!"});
+						return;
+					}
+					if(workspace.users.indexOf(user.google.userId)<0) {
+						client.send({err:"Not Authorized!"});
+						return;
+					}
+					NoteModel.findById(noteId, function(err, note) {
+						if(err) {
+							console.log(err);
+							client.send({err:"Error!"});
+							return;
+						}
+						if(!note) {
+							client.send({err:"Note not found!"});
+							return;
+						}
+						if(note.users.indexOf(user.google.userId)<0) {
+							client.send({err:"Not Authorized!"});
+							return;
+						}
+						if(note.typeNote!="user"&&note.typeNote!="code") {
+							client.send({err:"Not Authorized!"});
+							return;
+						}
+						if(!ng[workspaceId]) {
+							ng[workspaceId] = [];
+						}
+						if(!ng[workspaceId][noteId]) {
+							var noteD = workspace.notes.filter(function(obj) {
+								return obj.noteId==noteId;
+							})[0];
+							ng[workspaceId][noteId] = new GeologyServer(noteId, noteD);
+						}
+						ng[workspaceId][noteId].connection(client);
+					});
+				});
+				//Insert positioning code here
+			}
 		}
 	});
 }));
+function GeologyServer(noteId, noteData) {
+	this.noteId = noteId;
+	this.timer = null;
+	//
+	//
+	// Relevant stuff here
+	//
+	//
+	this.connection = function(client) {
+		
+	}
+}
 Client = function(client, server) {
 	this.client = client;
 	this.server = server;
@@ -234,7 +296,15 @@ passport.use(new GoogleStrategy({
 							if(err) return done(err);
 							var workspace = new Workspace( {
 								name: "General",
-								notes: [{"noteId":noteModel.id, "stored":false}],
+								notes: [{
+									"noteId":noteModel.id, 
+									"stored":false,
+									"x":0,
+									"y":0,
+									"width":20,
+									"height":20,
+									"zIndex":0
+								}],
 								users: [profile.id],
 								storage: {
 									x:80,
@@ -284,7 +354,15 @@ passport.use(new GoogleStrategy({
 							if(err) return done(err);
 							var workspace = new Workspace( {
 								name: "General",
-								notes: [{"noteId":noteModel.id, "stored":false}],
+								notes: [{
+									"noteId":noteModel.id, 
+									"stored":false,
+									"x":0,
+									"y":0,
+									"width":20,
+									"height":20,
+									"zIndex":0
+								}],
 								users: [profile.id],
 								storage: {
 									x:80,
@@ -335,14 +413,14 @@ app.get('/auth/google/callback', passport.authenticate('google', { failureRedire
 function getHTMLNote(note, user, callback) {
 	var obj = {};
 	obj.title = note.title;
-	obj.x = note.x;
-	obj.y = note.y;
-	obj.width = note.width;
-	obj.height = note.height;
+	obj.x = 0;
+	obj.y = 0;
+	obj.width = 20;
+	obj.height = 20;
 	obj.id = note.id;
 	obj.type = note.typeNote;
 	obj.subType = note.subType;
-	obj.zIndex = note.zIndex;
+	obj.zIndex = 0;
 	Note.handleContent(note, user, function(err, content) {
 		if(err) {
 			console.log(err);
@@ -396,13 +474,13 @@ app.get('/home', ensureAuthenticated, function(req, res) {
 					else {
 						var obj = {};
 						obj.title = note.title;
-						obj.x = note.x;
-						obj.y = note.y;
-						obj.width = note.width;
-						obj.height = note.height;
+						obj.x = noteData.x;
+						obj.y = noteData.y;
+						obj.width = noteData.width;
+						obj.height = noteData.height;
 						obj.id = note.id;
 						obj.type = note.typeNote;
-						obj.zIndex = note.zIndex;
+						obj.zIndex = noteData.zIndex;
 						obj.content = "Loading...";
 						notes.push(obj);
 						next();
@@ -457,13 +535,13 @@ app.get('/home/:id', ensureAuthenticated, function(req, res){
 					else {
 						var obj = {};
 						obj.title = note.title;
-						obj.x = note.x;
-						obj.y = note.y;
-						obj.width = note.width;
-						obj.height = note.height;
+						obj.x = noteData.x;
+						obj.y = noteData.y;
+						obj.width = noteData.width;
+						obj.height = noteData.height;
 						obj.id = note.id;
 						obj.type = note.typeNote;
-						obj.zIndex = note.zIndex;
+						obj.zIndex = noteData.zIndex;
 						obj.content = "Loading...";
 						notes.push(obj);
 						next();
@@ -602,33 +680,22 @@ app.post('/updateGeology/:id', ensureAuthenticated, function(req, res){
 			});
 		}
 		else {
-			NoteModel.findById(noteId, function(err, note) {
+			var note = workspace.notes.filter(function(obj) {
+				return obj.noteId==noteId;
+			})[0];
+			note.set("x", newX);
+			note.set("y", newY);
+			note.set("width", newWidth);
+			note.set("height", newHeight);
+			note.set("zIndex", index);
+			workspace.markModified("notes");
+			workspace.save(function(err) {
 				if(err) {
 					console.log(err);
-					res.send("Error!");
-					return;
+					return res.send("Error!");
 				}
-				if(!note) {			
-					res.send("Note not found!");
-					return;
-				}
-				if(note.users.indexOf(user.google.userId)<0) {
-					res.send("Not Authorized!");
-					return;
-				}
-				note.set("x", newX);
-				note.set("y", newY);
-				note.set("width", newWidth);
-				note.set("height", newHeight);
-				note.set("zIndex", index);
-				note.save(function(err) {
-					if(err) {
-						console.log(err);
-						return res.send("Error!");
-					}
-					console.log("Saved "+note.title);
-					res.send("Saved "+note.title);
-				});
+				console.log("Saved");
+				res.send("Saved");
 			});
 		}
 	});
@@ -896,7 +963,14 @@ app.get('/createWorkspace/:name', ensureAuthenticated, function(req, res) {
 		if(err) return done(err);
 		var workspace = new Workspace( {
 			name: "General",
-			notes: [{noteId:noteModel.id, stored: false}],
+			notes: [{noteId:noteModel.id, 
+				"stored":false,
+				"x":0,
+				"y":0,
+				"width":20,
+				"height":20,
+				"zIndex":0
+			}],
 			users: [user.google.userId],
 			storage: {
 				x:80,
@@ -950,7 +1024,14 @@ app.post('/createNote/:id', ensureAuthenticated, function(req, res) {
 					console.log(err);
 					res.send("Error!");
 				}
-				workspace.notes.push({"noteId":note.id, "stored":false});
+				workspace.notes.push({noteId:note.id, 
+					"stored":false,
+					"x":0,
+					"y":0,
+					"width":20,
+					"height":20,
+					"zIndex":0
+				});
 				workspace.markModified("notes");
 				workspace.save(function(err) {
 					if(err) {

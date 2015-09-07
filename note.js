@@ -31,13 +31,8 @@ marked.setOptions({
 });
 exports.Note = function(title, content, type, subType) {
 	this.title = title;
-	this.x = 0;
-	this.y = 0;
-	this.width = 20;
-	this.height = 20;
 	this.content = content;
 	this.typeNote = type;
-	this.zIndex = 0;
 	this.subType = subType;
 	this.stored = false;
 	this.users = [];
