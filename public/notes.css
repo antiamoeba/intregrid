@@ -204,3 +204,12 @@ input {
 	border-radius: 5px;
 	padding: 5px;
 }
+.storage .workspace {
+
+}
+.storage .notel {
+	background-color: #364c53;
+}
+.storage .notel:hover {
+	background-color:#113c47;
+}

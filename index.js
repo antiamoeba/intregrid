@@ -30,12 +30,15 @@ db.once('open', function (callback) {
 			email: String
 		},
 		workspaces: [String],
+		notes: [{noteId:String, source:String, sourceTitle: String, title: String}],
+		notifs: [String],
 		home: String
 	});
 	var workspaceSchema = mongoose.Schema({
 		name: String,
 		notes: [{
-			noteId: String,
+			noteId:String,
+			title: String,
 			stored: Boolean,
 			x: Number,
 			y: Number,
@@ -50,7 +53,7 @@ db.once('open', function (callback) {
 			height: Number,
 			zIndex: Number
 		},
-		users: [String]
+		user: String
 	});
 	var noteSchema = mongoose.Schema({
 		title: String,
@@ -75,6 +78,7 @@ var Workspace;
 var antot = require('./antot');
 var NoteModel;
 //Post request data
+app.use(express.static(__dirname+'/public'));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 //Cookies
@@ -84,7 +88,6 @@ app.use(session({secret: "dogfish", resave:false, store: ms}));
 app.use(passport.initialize());
 app.use(passport.session());
 var ss = [];
-var ng = [];
 app.use(browserChannel(function(client,req) {
 	var user = req.user;
 	client.on('message', function(data) {
@@ -115,68 +118,9 @@ app.use(browserChannel(function(client,req) {
 					ss[noteId].connection(client);
 				});
 			}
-			if(data.type=="geology") {
-				Workspace.findById(data.workspaceId, function(err, workspace) {
-					if(err) {
-						console.log(err);
-						client.send({err:"Error!"});
-						return;
-					}
-					if(!workspace) {
-						client.send({err:"Note not found!"});
-						return;
-					}
-					if(workspace.users.indexOf(user.google.userId)<0) {
-						client.send({err:"Not Authorized!"});
-						return;
-					}
-					NoteModel.findById(noteId, function(err, note) {
-						if(err) {
-							console.log(err);
-							client.send({err:"Error!"});
-							return;
-						}
-						if(!note) {
-							client.send({err:"Note not found!"});
-							return;
-						}
-						if(note.users.indexOf(user.google.userId)<0) {
-							client.send({err:"Not Authorized!"});
-							return;
-						}
-						if(note.typeNote!="user"&&note.typeNote!="code") {
-							client.send({err:"Not Authorized!"});
-							return;
-						}
-						if(!ng[workspaceId]) {
-							ng[workspaceId] = [];
-						}
-						if(!ng[workspaceId][noteId]) {
-							var noteD = workspace.notes.filter(function(obj) {
-								return obj.noteId==noteId;
-							})[0];
-							ng[workspaceId][noteId] = new GeologyServer(noteId, noteD);
-						}
-						ng[workspaceId][noteId].connection(client);
-					});
-				});
-				//Insert positioning code here
-			}
 		}
 	});
 }));
-function GeologyServer(noteId, noteData) {
-	this.noteId = noteId;
-	this.timer = null;
-	//
-	//
-	// Relevant stuff here
-	//
-	//
-	this.connection = function(client) {
-		
-	}
-}
 Client = function(client, server) {
 	this.client = client;
 	this.server = server;
@@ -229,6 +173,8 @@ function NoteServer(noteId, content) {
 var template;
 var noteTemplate;
 var noteWrapper;
+var storedTemplate;
+var sharedTemplate;
 function updateTemplates() {
 	fs.readFile('static/'+'index.html', function(err, html) {
 		if(err) {
@@ -250,6 +196,19 @@ function updateTemplates() {
 			return;
 		}
 		noteWrapper = Handlebars.compile(html+"");
+	});
+	fs.readFile('static/'+'stored.html', function(err, html) {
+		if(err) {
+			console.log('Error reading note file: ' + err);
+			return;
+		}
+		storedTemplate = Handlebars.compile(html+"");
+	});
+	fs.readFile('static/'+'shared.html', function(err, html) {
+		if(err) {
+			console.log("Error reading shared file: " +err);
+		}
+		sharedTemplate = Handlebars.compile(html+"");
 	});
 }
 updateTemplates();
@@ -294,18 +253,19 @@ passport.use(new GoogleStrategy({
 						var noteModel = new NoteModel(note);
 						noteModel.save(function(err) {
 							if(err) return done(err);
-							var workspace = new Workspace( {
+							var workspace = new Workspace({
 								name: "General",
 								notes: [{
-									"noteId":noteModel.id, 
-									"stored":false,
-									"x":0,
-									"y":0,
-									"width":20,
-									"height":20,
-									"zIndex":0
+									noteId: noteModel.id,
+									title: noteModel.title,
+									stored: false,
+									x: 0,
+									y: 0,
+									width: 20,
+									height: 20,
+									zIndex: 0
 								}],
-								users: [profile.id],
+								user: profile.id,
 								storage: {
 									x:80,
 									y:20,
@@ -313,12 +273,13 @@ passport.use(new GoogleStrategy({
 									width: 20,
 									zIndex: 1
 								}
-							})
+							});
 							workspace.save(function(err) {
 								if(err) return done(err);
 								nuser.workspaces.push(workspace.id);
 								nuser.markModified("workspaces");
 								nuser.home = workspace.id;
+								nuser.notes.push({source:workspace.id, sourceTitle: workspace.name, noteId: noteModel.id, title: noteModel.title});
 								nuser.save(function(err) {
 									return done(null, nuser);
 								});
@@ -352,18 +313,19 @@ passport.use(new GoogleStrategy({
 						var noteModel = new NoteModel(note);
 						noteModel.save(function(err) {
 							if(err) return done(err);
-							var workspace = new Workspace( {
+							var workspace = new Workspace({
 								name: "General",
 								notes: [{
-									"noteId":noteModel.id, 
-									"stored":false,
-									"x":0,
-									"y":0,
-									"width":20,
-									"height":20,
-									"zIndex":0
+									noteId: noteModel.id,
+									title: noteModel.title,
+									stored: false,
+									x: 0,
+									y: 0,
+									width: 20,
+									height: 20,
+									zIndex: 0
 								}],
-								users: [profile.id],
+								user: profile.id,
 								storage: {
 									x:80,
 									y:20,
@@ -371,12 +333,13 @@ passport.use(new GoogleStrategy({
 									width: 20,
 									zIndex: 1
 								}
-							})
+							});
 							workspace.save(function(err) {
 								if(err) return done(err);
 								nuser.workspaces.push(workspace.id);
 								nuser.markModified("workspaces");
 								nuser.home = workspace.id;
+								nuser.notes.push({source:workspace.id, sourceTitle: workspace.name, noteId: noteModel.id, title: noteModel.title});
 								nuser.save(function(err) {
 									return done(null, nuser);
 								});
@@ -413,14 +376,14 @@ app.get('/auth/google/callback', passport.authenticate('google', { failureRedire
 function getHTMLNote(note, user, callback) {
 	var obj = {};
 	obj.title = note.title;
-	obj.x = 0;
-	obj.y = 0;
-	obj.width = 20;
-	obj.height = 20;
+	obj.x = note.x || 0;
+	obj.y = note.y || 0;
+	obj.width = note.width || 20;
+	obj.height = note.height || 20;
 	obj.id = note.id;
 	obj.type = note.typeNote;
 	obj.subType = note.subType;
-	obj.zIndex = 0;
+	obj.zIndex = note.zIndex || 0;
 	Note.handleContent(note, user, function(err, content) {
 		if(err) {
 			console.log(err);
@@ -450,7 +413,7 @@ app.get('/home', ensureAuthenticated, function(req, res) {
 			res.send("Workspace not found!");
 			return;
 		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
@@ -491,8 +454,7 @@ app.get('/home', ensureAuthenticated, function(req, res) {
 				next();
 			}
 		}, function() {
-			var storage = workspace.storage;
-			var data = {"notes":notes, "workspaceId":user.home, "storage":storage};
+			var data = {"notes":notes, "workspaceId":user.home, "storage":workspace.storage, "home": true};
 			var result = template(data);
 			res.send(result);
 		});
@@ -511,7 +473,7 @@ app.get('/home/:id', ensureAuthenticated, function(req, res){
 			res.send("Workspace not found!");
 			return;
 		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
@@ -552,8 +514,7 @@ app.get('/home/:id', ensureAuthenticated, function(req, res){
 				next();
 			}
 		}, function() {
-			var storage = workspace.storage;
-			var data = {"notes":notes, "workspaceId":workspaceId, "storage":storage};
+			var data = {"notes":notes, "workspaceId":workspaceId, "storage":workspace.storage, "home":workspaceId!=user.home};
 			var result = template(data);
 			res.send(result);
 		});
@@ -587,60 +548,55 @@ app.post('/getNote', ensureAuthenticated, function(req, res) {
 		});
 	});
 });
-app.post('/getNoteHTML', ensureAuthenticated, function(req, res) {
+app.post('/getNoteHTML/:id', ensureAuthenticated, function(req, res) {
 	var user = req.user;
 	var noteId = req.body.id;
-	NoteModel.findById(noteId, function(err, note) {
+	var workspaceId = req.params.id;
+	Workspace.findById(workspaceId, function(err, workspace) {
 		if(err) {
 			console.log(err);
 			res.send("Error!");
 			return;
 		}
-		if(!note) {
-			res.send("Note not found!");
+		if(!workspace) {
+			res.send("Workspace not found!");
 			return;
 		}
-		if(note.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
-		getHTMLNote(note, user, function(err, content) {
+		var noteData = workspace.notes.filter(function(obj) {
+			return obj.noteId==noteId;
+		})
+		NoteModel.findById(noteId, function(err, note) {
 			if(err) {
 				console.log(err);
-				res.send("There was an error!");
+				res.send("Error!");
+				return;
 			}
-			else {
-				res.send(content);
+			if(!note) {
+				res.send("Note not found!");
+				return;
 			}
-		});
-	});
-});
-app.get('/getNote/:id', ensureAuthenticated, function(req, res) {
-	var user = req.user;
-	var noteId = req.params.id;
-	NoteModel.findById(noteId, function(err, note) {
-		if(err) {
-			console.log(err);
-			res.send("Error!");
-			return;
-		}
-		if(!note) {
-			res.send("Note not found!");
-			return;
-		}
-		if(note.users.indexOf(user.google.userId)<0) {
-			res.send("Not Authorized!");
-			return;
-		}
-		getHTMLNote(note, user, function(err, content) {
-			if(err) {
-				console.log(err);
-				res.send("There was an error!");
+			if(note.users.indexOf(user.google.userId)<0) {
+				res.send("Not Authorized!");
+				return;
 			}
-			else {
-				var content = noteWrapper({note: content});
-				res.send(content);
-			}
+			note.x = noteData.x;
+			note.y = noteData.y;
+			note.width = noteData.width;
+			note.height = noteData.height;
+			note.zIndex = noteData.zIndex;
+			getHTMLNote(note, user, function(err, content) {
+				if(err) {
+					console.log(err);
+					res.send("There was an error!");
+				}
+				else {
+					res.send(content);
+				}
+			});
 		});
 	});
 });
@@ -654,6 +610,7 @@ app.post('/updateGeology/:id', ensureAuthenticated, function(req, res){
 	var index = req.body.zIndex;
 	var user = req.user;
 	Workspace.findById(workspaceId, function(err, workspace) {
+		console.log("received");
 		if(err) {
 			console.log(err);
 			res.send("Error!");
@@ -663,7 +620,7 @@ app.post('/updateGeology/:id', ensureAuthenticated, function(req, res){
 			res.send("Workspace not found!");
 			return;
 		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
@@ -683,6 +640,10 @@ app.post('/updateGeology/:id', ensureAuthenticated, function(req, res){
 			var note = workspace.notes.filter(function(obj) {
 				return obj.noteId==noteId;
 			})[0];
+			if(!note) {
+				res.send("Note not found!");
+				return;
+			}
 			note.set("x", newX);
 			note.set("y", newY);
 			note.set("width", newWidth);
@@ -699,61 +660,15 @@ app.post('/updateGeology/:id', ensureAuthenticated, function(req, res){
 			});
 		}
 	});
-
 });
 
-app.post('/updateUserText/:id', ensureAuthenticated, function(req, res) {
-	var noteId = req.body.id;
-	var workspaceId = req.params.id;
-	var content = req.body.text;
+app.post('/getSharedNotes', ensureAuthenticated, function(req, res) {
 	var user = req.user;
-	Workspace.findById(workspaceId, function(err, workspace) {
-		if(err) {
-			console.log(err);
-			res.send("Error!");
-			return;
-		}
-		if(!workspace) {
-			res.send("Workspace not found!");
-			return;
-		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
-			res.send("Not Authorized!");
-			return;
-		}
-		NoteModel.findById(noteId, function(err, note) {
-			if(err) {
-				console.log(err);
-				res.send("Error!");
-				return;
-			}
-			if(!note) {
-				res.send("Note not found!");
-				return;
-			}
-			if(note.users.indexOf(user.google.userId)<0) {
-				res.send("Not Authorized!");
-				return;
-			}
-			if(note.typeNote=="markdown"||note.typeNote=="html"||note.typeNote=="code") {
-				note.set("content", content);
-				note.save(function(err) {
-					if(err) {
-						console.log(err);
-						res.send("Error!");
-					}
-					else {
-						console.log("Saved "+note.title);
-						res.send("Saved "+note.title);
-					}
-				});
-			}
-			else {
-				res.send("Note not found.");
-			}
-		});
-	});
+	var notes = user.sharedNotes;
+	res.send(sharedTemplate({"notes": notes}));
 });
+
+
 app.post('/shareNote/:id', ensureAuthenticated, function(req, res) {
 	var user = req.user;
 	var noteId = req.params.id;
@@ -771,7 +686,7 @@ app.post('/shareNote/:id', ensureAuthenticated, function(req, res) {
 			res.send("User not found!");
 			return;
 		}
-		NoteModel.findById(noteid, function(err, note) {
+		NoteModel.findById(noteId, function(err, note) {
 			if(err) {
 				console.log(err);
 				return res.send("Error!");
@@ -786,12 +701,22 @@ app.post('/shareNote/:id', ensureAuthenticated, function(req, res) {
 			}
 			note.users.push(newUserId);
 			note.markModified("users");
+			newuser.notes.push({source:"shared", sourceTitle:"shared", noteId:note.id, title: note.title});
+			newuser.notifs.push("New note " + note.title+" was shared with you by "+user.google.email);
+			newuser.markModified("notes");
+			newuser.markModified("notifs");
 			note.save(function(err) {
 				if(err) {
 					console.log(err);
 					return res.send("Error!");
 				}
-				res.send("Shared " + note.title);
+				newuser.save(function(err) {
+					if(err) {
+						res.send("Error!");
+						return console.log(err);
+					}
+					res.send("Shared " + note.title);
+				});
 			});
 		});
 	});
@@ -825,13 +750,15 @@ app.post('/shareWorkspace/:id', ensureAuthenticated, function(req, res) {
 				res.send("Workspace not found!");
 				return;
 			}
-			if(workspace.users.indexOf(user.google.userId)<0) {
+			if(workspace.user!=user.google.userId) {
 				res.send("Not Authorized!");
 				return;
 			}
-			workspace.users.push(newUserId);
-			workspace.markModified("users");
 			console.log("share pls");
+			//Duplicate workspace
+			workspace._id = mongoose.Types.ObjectId();
+			workspace.isNew = true;
+			workspace.user = newUserId;
 			workspace.save(function(err) {
 				if(err) {
 					console.log(err);
@@ -854,6 +781,7 @@ app.post('/shareWorkspace/:id', ensureAuthenticated, function(req, res) {
 						}
 						note.users.push(newUserId);
 						note.markModified("users");
+						newuser.notes.push({source:workspace.id, sourceTitle: workspace.name, noteId:note.id, title: note.title});
 						note.save(function(err) {
 							if(err) {
 								console.log(err);
@@ -864,11 +792,82 @@ app.post('/shareWorkspace/:id', ensureAuthenticated, function(req, res) {
 						});
 					});
 				}, function() {
-					console.log("Shared with all!");
-					res.send("Shared " + workspace.name);
+					newuser.notifs.push("Workspace " + workspace.name+" was shared with you by "+user.google.email);
+					newuser.markModified("notifs");
+					newuser.markModified("notes");
+					newuser.save(function(err) {
+						console.log("Shared with all!");
+						res.send("Shared " + workspace.name);
+					});
 				});
 			});
 		});
+	});
+});
+app.post('/pullNote/:id', ensureAuthenticated, function(req, res) {
+	var user = req.user;
+	var workspaceId = req.params.id;
+	var noteId = req.body.id;
+	Workspace.findById(workspaceId, function(err, workspace) {
+		if(err) {
+			console.log(err);
+			res.send("Error!");
+			return;
+		}
+		if(!workspace) {
+			res.send("Workspace not found!");
+			return;
+		}
+		if(workspace.user!=user.google.userId) {
+			res.send("Not Authorized!");
+			return;
+		}
+		var noteData = workspace.notes.filter(function(obj) {
+			return obj.noteId==noteId;
+		})[0];
+		if(noteData) {
+			noteData.stored = false;
+			workspace.markModified("notes");
+			workspace.save(function(err) {
+				if(err) {
+					console.log(err);
+					res.send("Error!");
+					return;
+				}
+				NoteModel.findById(noteId, function(err, note) {
+					if(err) {
+						console.log(err);
+						res.send("Error!");
+						return;
+					}
+					if(!note) {
+						res.send("Note not found!");
+						return;
+					}
+					if(note.users.indexOf(user.google.userId)<0) {
+						res.send("Not Authorized!");
+						return;
+					}
+					note.x = noteData.x;
+					note.y = noteData.y;
+					note.width = noteData.width;
+					note.height = noteData.height;
+					note.zIndex = noteData.zIndex;
+					getHTMLNote(note, user, function(err, content) {
+						if(err) {
+							console.log(err);
+							res.send("There was an error!");
+						}
+						else {
+							res.send(content);
+						}
+					});
+				});
+			});
+		}
+		else {
+			res.send("No note found!");
+		}
 	});
 });
 app.post('/storeNote/:id', ensureAuthenticated, function(req, res) {
@@ -885,7 +884,7 @@ app.post('/storeNote/:id', ensureAuthenticated, function(req, res) {
 			res.send("Workspace not found!");
 			return;
 		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
@@ -894,6 +893,7 @@ app.post('/storeNote/:id', ensureAuthenticated, function(req, res) {
 		})[0];
 		if(note) {
 			note.stored = true;
+			workspace.markModified("notes");
 			workspace.save(function(err) {
 				if(err) {
 					console.log(err);
@@ -906,6 +906,45 @@ app.post('/storeNote/:id', ensureAuthenticated, function(req, res) {
 		else {
 			res.send("No note found!");
 		}
+	});
+});
+app.post('/getStored/:id', ensureAuthenticated, function(req, res) {
+	var workspaceId = req.params.id;
+	var user = req.user;
+	Workspace.findById(workspaceId, function(err, workspace) {
+		if(err) {
+			console.log(err);
+			res.send("Error!");
+		}
+		if(!workspace) {
+			res.send("Workspace not found!");
+			return;
+		}
+		if(workspace.user!=user.google.userId) {
+			res.send("Not Authorized!");
+			return;
+		}
+		var workspacenotes = [];
+		var othernotes = [];
+		forEachNext(workspace.notes, 0, function(noteData, index, next) {
+			workspacenotes.push({type:"notel", data:{title:noteData.title, data:noteData.noteId}});
+			next();
+		}, function() {
+			console.log("done1");
+			forEachNext(user.notes, 0, function(noteData, index2, next2) {
+				var worksp = othernotes.filter(function(obj) {
+					return obj.work==noteData.source;
+				})[0];
+				if(!worksp) {
+					worksp = {work:noteData.source, title: noteData.sourceTitle, notes:[]};
+					othernotes.push(worksp)
+				}
+				worksp.notes.push({type:"notel", data:{title:noteData.title, data:noteData.noteId}});
+				next2();
+			}, function() {
+				res.send(storedTemplate({worknotes:workspacenotes, othnotes:othernotes}));
+			});
+		});
 	});
 });
 app.post('/removeNote/:id', ensureAuthenticated, function(req, res) {
@@ -922,7 +961,7 @@ app.post('/removeNote/:id', ensureAuthenticated, function(req, res) {
 			res.send("Workspace not found!");
 			return;
 		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
@@ -961,17 +1000,19 @@ app.get('/createWorkspace/:name', ensureAuthenticated, function(req, res) {
 	var noteModel = new NoteModel(note);
 	noteModel.save(function(err) {
 		if(err) return done(err);
-		var workspace = new Workspace( {
-			name: "General",
-			notes: [{noteId:noteModel.id, 
-				"stored":false,
-				"x":0,
-				"y":0,
-				"width":20,
-				"height":20,
-				"zIndex":0
+		var workspace = new Workspace({
+			name: name,
+			notes: [{
+				noteId: noteModel.id,
+				title: noteModel.title,
+				stored: false,
+				x: 0,
+				y: 0,
+				width: 20,
+				height: 20,
+				zIndex: 0
 			}],
-			users: [user.google.userId],
+			user: user.google.userId,
 			storage: {
 				x:80,
 				y:20,
@@ -987,7 +1028,9 @@ app.get('/createWorkspace/:name', ensureAuthenticated, function(req, res) {
 				return;
 			}
 			user.workspaces.push(workspace.id);
+			user.notes.push({source:workspace.id, sourceTitle: workspace.name, noteId:noteModel.id, title:noteModel.title});
 			user.markModified("workspaces");
+			user.markModified("notes");
 			user.save(function(err) {
 				res.redirect('/home/'+workspace.id);
 			});
@@ -998,6 +1041,9 @@ app.post('/createNote/:id', ensureAuthenticated, function(req, res) {
 	var user = req.user;
 	var type = req.body.type;
 	var title = req.body.title;
+	if(title.length==0) {
+		title = "Untitled";
+	}
 	var content = req.body.content;
 	var workspaceId = req.params.id;
 	Workspace.findById(workspaceId, function(err, workspace) {
@@ -1010,7 +1056,7 @@ app.post('/createNote/:id', ensureAuthenticated, function(req, res) {
 			res.send("Workspace not found!");
 			return;
 		}
-		if(workspace.users.indexOf(user.google.userId)<0) {
+		if(workspace.user!=user.google.userId) {
 			res.send("Not Authorized!");
 			return;
 		}
@@ -1025,6 +1071,7 @@ app.post('/createNote/:id', ensureAuthenticated, function(req, res) {
 					res.send("Error!");
 				}
 				workspace.notes.push({noteId:note.id, 
+					"title":note.title,
 					"stored":false,
 					"x":0,
 					"y":0,
@@ -1039,9 +1086,17 @@ app.post('/createNote/:id', ensureAuthenticated, function(req, res) {
 						res.send("Error!");
 					}
 					else {
-						getHTMLNote(note, user, function(err, result) {
-							if(err) return console.log(err);
-							res.send(result);
+						user.notes.push({source:workspace.id, sourceTitle: workspace.name, noteId:noteModel.id, title: noteModel.title});
+						user.markModified("notes");
+						user.save(function(err) {
+							if(err) {
+								console.log(err);
+								res.send("Error!");
+							}
+							getHTMLNote(note, user, function(err, result) {
+								if(err) return console.log(err);
+								res.send(result);
+							});
 						});
 					}
 				});
@@ -1065,7 +1120,6 @@ app.get('/update', function(req, res){
 app.get('/user', function(req, res){
 	res.send(req.user);
 });
-app.use(express.static(__dirname+'/public'));
 http.listen(3000, function(){
 	console.log('listening on *:3000');
 });

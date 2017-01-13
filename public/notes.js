@@ -140,7 +140,7 @@ $(function() {
                     var editor = ace.edit(note.attr("id")+"editor");
                     editor.setTheme('ace/theme/solarized_dark');
                     var input = textarea.prev('input[type=hidden]');
-                    editor.getSession().setMode('ace/mode/'+input.attr("lang"));
+                    //editor.getSession().setMode('ace/mode/'+input.attr("lang"));
                     var ac = new AceConnection(editor, note.attr("id"));
                 }
                 if($("#"+note.attr("id")+"editor").length!=0&&note.attr("note")=="user") {
@@ -158,19 +158,31 @@ $(function() {
                 }
                 requests--;
             });
-            var geology = new GeologyEditor(note, note.attr("id"));
+        }
+        else {
+            requests++;
+            $.post('/getStored/'+workspace, options, function(data) {
+                requests--;
+                note.find(".mCSB_container").html(data);
+                note.find(".stored").click(function() {
+                    var subnote = $(this);
+                    var id = $(this).attr("linkid");
+                    if(subnote.hasClass("notel")&&$("#"+id).length==0) {
+                        var options2 = {
+                            id: id
+                        }
+                        requests++;
+                        $.post('/pullNote/' + workspace, options2, function(data) {
+                            requests--;
+                            n = showNote(data);
+                            n.css("z-index", ++topz);
+                        });
+                    }
+                });
+            });
         }
         //Yay
     });
-    function GeologyEditor(note, noteId) {
-        //
-        //
-        // Insert stuff here;
-        //
-        //
-        socket = new BCSocket('/channel');
-        socket.send({noteId: noteId, type: "geology", workspaceId: workspace});
-    }
     function AceConnection(editor, noteId) {
         this.editor = editor;
         editor.$blockScrolling = Infinity;
@@ -357,9 +369,31 @@ $(function() {
         button.html("Adding...");
         $.post("/createNote/"+workspace, options, function(data) {
             requests--;
-            showNote(data);
+            n = showNote(data);
+            n.css("z-index", ++topz);
             button.html("Add note");
             dialog.fadeOut();
+            note = $(".storage");
+            requests++;
+            $.post('/getStored/'+workspace, options, function(data) {
+                requests--;
+                note.find(".mCSB_container").html(data);
+                note.find(".stored").click(function() {
+                    var subnote = $(this);
+                    var id = $(this).attr("linkid");
+                    if(subnote.hasClass("notel")&&$("#"+id).length==0) {
+                        var options2 = {
+                            id: id
+                        }
+                        requests++;
+                        $.post('/pullNote/' + workspace, options2, function(data) {
+                            requests--;
+                            n = showNote(data);
+                            n.css("z-index", ++topz);
+                        });
+                    }
+                });
+            });
         });
     });
     $(".scroller").load(function() {
@@ -393,7 +427,6 @@ $(function() {
             quill.addModule('image-tooltip', true);
             var ce = new ConnectionEditor(quill, note.attr("id"));
         }
-        var geology = new GeologyEditor(note, note.attr("id"));
         applyListeners(note);
         var x = note.attr("posx");
         var y = note.attr("posy");
@@ -403,6 +436,7 @@ $(function() {
         var height = note.attr("h");
         note.css("width", width+"%");
         note.css("height", height+"%");
+        return note;
     }
     function applyListeners(note) {
         note.find(".close").click(function() {
@@ -410,13 +444,26 @@ $(function() {
                 id: note.attr("id")
             }
             requests++;
-            $.post("/removeNote/"+workspace, options, function(data) {
+            $.post("/storeNote/"+workspace, options, function(data) {
                 requests--;
                 note.remove();
             });
         });
         note.mousedown(function () {
             $(this).css("z-index", ++topz);
+            var note = $(this);
+            var options = {
+                id:note.attr('id'),
+                x: parseFloat(note[0].style.left),
+                y: parseFloat(note[0].style.top),
+                width: parseFloat(note[0].style.width),
+                height: parseFloat(note[0].style.height),
+                zIndex: parseInt(note.css("z-index"))
+            }
+            requests++;
+            $.post("/updateGeology/"+workspace, options, function(data) {
+                requests--;
+            });
         });
 
     }
